@@ -4,7 +4,9 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  maxHttpBufferSize: 50 * 1024 * 1024 // 50MB
+});
 
 app.use(express.static('public'));
 
@@ -43,8 +45,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('image', (data) => {
+    console.log('Server received image:', data.id, 'size:', data.dataURL.length);
     images.set(data.id, data);
     io.emit('image', data);
+    console.log('Server broadcasted image:', data.id);
   });
 
   socket.on('cursor', (data) => {

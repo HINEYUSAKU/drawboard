@@ -139,9 +139,13 @@ function pushDraw(from, to) {
 }
 
 function addOrUpdateImage(imgData, emit = true) {
+  console.log('addOrUpdateImage called for', imgData.id, 'dataURL size:', imgData.dataURL.length);
   imageMap.set(imgData.id, imgData);
   renderAll();
-  if (emit) socket.emit('image', imgData);
+  if (emit) {
+    socket.emit('image', imgData);
+    console.log('Emitted image:', imgData.id);
+  }
 }
 
 function findImageAt(x, y) {
