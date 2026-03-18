@@ -79,23 +79,49 @@ function drawLine(event) {
 
 function renderAll() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Collect all items (lines and images) with timestamps for proper ordering
+  const items = [];
+  
+  // Add all draw items from history
   drawHistory.forEach((item) => {
-    if (item.type === 'draw') drawLine(item.payload);
+    if (item.type === 'draw') {
+      items.push({ ...item, timestamp: item.timestamp || 0 });
+    }
   });
+  
+  // Add all images with their timestamps
   imageMap.forEach((imgData) => {
-    let img = imageCache.get(imgData.id);
-    if (!img) {
-      img = new Image();
-      imageCache.set(imgData.id, img);
-      img.onload = () => {
+    items.push({
+      type: 'image',
+      timestamp: imgData.timestamp || 0,
+      imgData: imgData
+    });
+  });
+  
+  // Sort by timestamp to maintain proper draw order
+  items.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  
+  // Render in chronological order
+  items.forEach((item) => {
+    if (item.type === 'draw') {
+      drawLine(item.payload);
+    } else if (item.type === 'image') {
+      const imgData = item.imgData;
+      let img = imageCache.get(imgData.id);
+      if (!img) {
+        img = new Image();
+        imageCache.set(imgData.id, img);
+        img.onload = () => {
+          ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
+        };
+        img.onerror = () => {
+          console.error(`Failed to load image ${imgData.id}`);
+        };
+        img.src = imgData.dataURL;
+      } else if (img.complete) {
         ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
-      };
-      img.onerror = () => {
-        console.error(`Failed to load image ${imgData.id}`);
-      };
-      img.src = imgData.dataURL;
-    } else if (img.complete) {
-      ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
+      }
     }
   });
 }
@@ -132,13 +158,18 @@ function hideCursorLabel() {
 }
 
 function pushDraw(from, to) {
-  const payload = { from, to, color: colorInput.value, size: Number(sizeInput.value), mode };
-  drawHistory.push({ type: 'draw', payload });
+  const timestamp = Date.now();
+  const payload = { from, to, color: colorInput.value, size: Number(sizeInput.value), mode, timestamp };
+  drawHistory.push({ type: 'draw', payload, timestamp });
   drawLine(payload);
   socket.emit('draw', payload);
 }
 
 function addOrUpdateImage(imgData, emit = true) {
+  // Add timestamp if not present (for proper draw order)
+  if (!imgData.timestamp) {
+    imgData.timestamp = Date.now();
+  }
   console.log('addOrUpdateImage called for', imgData.id, 'dataURL size:', imgData.dataURL.length);
   imageMap.set(imgData.id, imgData);
   renderAll();
@@ -174,11 +205,14 @@ socket.on('init', (payload) => {
 });
 
 socket.on('draw', (payload) => {
-  drawHistory.push({ type: 'draw', payload });
+  drawHistory.push({ type: 'draw', payload, timestamp: payload.timestamp || Date.now() });
   drawLine(payload);
 });
 
 socket.on('image', (payload) => {
+  if (!payload.timestamp) {
+    payload.timestamp = Date.now();
+  }
   imageMap.set(payload.id, payload);
   imageCache.delete(payload.id);
   renderAll();
