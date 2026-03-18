@@ -1,4 +1,5 @@
 const canvas = document.getElementById('canvas');
+const canvasWrap = document.querySelector('.canvas-wrap');
 const ctx = canvas.getContext('2d');
 const colorInput = document.getElementById('color');
 const sizeInput = document.getElementById('size');
@@ -82,7 +83,22 @@ function updateRemoteCursors(cursors) {
   });
 }
 
-function setCursorLabel(x, y) {
+function canvasToCanvasPosition(x, y) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: x * scaleX,
+    y: y * scaleY,
+    pageX: rect.left + x / scaleX,
+    pageY: rect.top + y / scaleY
+  };
+}
+
+function setCursorLabel(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
   cursorLabel.style.left = `${x}px`;
   cursorLabel.style.top = `${y}px`;
   cursorLabel.style.display = 'block';
@@ -104,7 +120,7 @@ socket.on('connect', () => {
 });
 
 socket.on('init', (payload) => {
-  const { history, participants } = payload;
+  const { history, participants, cursors } = payload;
   if (Array.isArray(history)) {
     history.forEach((item) => {
       if (item.type === 'draw') drawLine(item.payload);
@@ -114,6 +130,9 @@ socket.on('init', (payload) => {
   }
   if (Array.isArray(participants)) {
     updateParticipants(participants);
+  }
+  if (Array.isArray(cursors)) {
+    updateRemoteCursors(cursors);
   }
 });
 
