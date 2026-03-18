@@ -45,11 +45,21 @@ canvas.addEventListener('pointermove', (e) => {
   lastPoint = newPoint;
 });
 
+socket.on('init', (history) => {
+  history.forEach((item) => {
+    if (item.type === 'draw') {
+      drawLine(item.payload);
+    }
+  });
+});
+
 socket.on('draw', drawLine);
+
 clearBtn.addEventListener('click', () => {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   socket.emit('clear');
 });
+
 socket.on('clear', () => {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
