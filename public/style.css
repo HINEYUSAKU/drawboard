@@ -5,7 +5,8 @@ header { background: #1f2937; color: white; padding: 12px 16px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px; }
 #canvas { width: 1000px; height: 600px; max-width: 100%; display: block; background: #fff; cursor: crosshair; touch-action: none; }
 @media (max-width: 900px) { #canvas { width: 1000px; height: 600px; } }
-.canvas-wrap { position: relative; width: 100%; }
+.canvas-wrap { position: relative; width: 100%; overflow: auto; border: 1px solid #d1d5db; background: #fff; }
+#canvas { width: 1000px; height: 600px; max-width: none; display: block; background: #fff; cursor: crosshair; touch-action: none; }
 .remote-cursors { position: absolute; inset: 0; pointer-events: none; z-index: 90; }
 .cursor-label { position: absolute; pointer-events: none; background: rgba(0, 0, 0, 0.75); color: white; border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; z-index: 100; transform: translate(-50%, -100%); display: none; }
 button { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; }

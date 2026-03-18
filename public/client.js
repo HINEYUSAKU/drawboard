@@ -178,13 +178,14 @@ canvas.addEventListener('pointerdown', (e) => {
   const pos = getCanvasPoint(e);
   if (e.pointerType === 'touch') {
     e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
   }
 
   if (imageMode && pendingImage) {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const w = canvas.width * 0.6;
     const h = (pendingImage.height / pendingImage.width) * w;
-    addOrUpdateImage({ id, dataURL: pendingImage.dataURL, x: pos.x - w / 2, y: pos.y - h / 2, w, h });
+    addOrUpdateImage({ id, dataURL: pendingImage.dataURL, x: pos.x, y: pos.y, w, h });
     pendingImage = null;
     imageMode = false;
     imageModeBtn.classList.remove('active');
@@ -232,7 +233,20 @@ canvas.addEventListener('pointerup', (e) => {
   drawing = false;
   lastPoint = null;
   imageDragId = null;
-  hideCursorLabel();
+  if (e.pointerType === 'touch') {
+    canvas.releasePointerCapture(e.pointerId);
+  }
+  socket.emit('cursor', null);
+});
+
+canvas.addEventListener('pointercancel', (e) => {
+  if (e.pointerType === 'touch' && !e.isPrimary) return;
+  drawing = false;
+  lastPoint = null;
+  imageDragId = null;
+  if (e.pointerType === 'touch') {
+    canvas.releasePointerCapture(e.pointerId);
+  }
   socket.emit('cursor', null);
 });
 
