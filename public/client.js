@@ -45,9 +45,14 @@ resizeCanvas();
 
 function getCanvasPoint(e) {
   const rect = canvas.getBoundingClientRect();
+  const canvasWrap = canvas.parentElement;
+  const scrollX = canvasWrap ? canvasWrap.scrollLeft : 0;
+  const scrollY = canvasWrap ? canvasWrap.scrollTop : 0;
+  const localX = e.clientX - rect.left + scrollX;
+  const localY = e.clientY - rect.top + scrollY;
   return {
-    x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-    y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    x: (localX / rect.width) * canvas.width,
+    y: (localY / rect.height) * canvas.height,
   };
 }
 
