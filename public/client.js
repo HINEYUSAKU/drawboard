@@ -88,11 +88,13 @@ function renderAll() {
       img = new Image();
       imageCache.set(imgData.id, img);
       img.onload = () => {
-        renderAll();
+        ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
+      };
+      img.onerror = () => {
+        console.error(`Failed to load image ${imgData.id}`);
       };
       img.src = imgData.dataURL;
-    }
-    if (img.complete) {
+    } else if (img.complete) {
       ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
     }
   });
@@ -174,6 +176,7 @@ socket.on('draw', (payload) => {
 
 socket.on('image', (payload) => {
   imageMap.set(payload.id, payload);
+  imageCache.delete(payload.id);
   renderAll();
 });
 
