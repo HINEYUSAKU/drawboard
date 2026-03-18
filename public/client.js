@@ -29,15 +29,18 @@ if (!userName) {
 }
 myNameEl.textContent = userName;
 
+const CANVAS_WIDTH = 1000;
+const CANVAS_HEIGHT = 600;
+
 function resizeCanvas() {
-  const w = canvas.clientWidth;
-  const h = Math.max(320, Math.round(window.innerHeight * 0.55));
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = CANVAS_WIDTH;
+  canvas.height = CANVAS_HEIGHT;
   renderAll();
 }
 
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener('resize', () => {
+  renderAll();
+});
 resizeCanvas();
 
 function getCanvasPoint(e) {
@@ -104,12 +107,8 @@ function updateRemoteCursors(cursors) {
   });
 }
 
-function setCursorLabel(clientX, clientY) {
-  const rect = canvas.getBoundingClientRect();
-  cursorLabel.style.left = `${clientX - rect.left}px`;
-  cursorLabel.style.top = `${clientY - rect.top}px`;
-  cursorLabel.style.display = 'block';
-  cursorLabel.textContent = userName;
+function setCursorLabel() {
+  // Do not show local self cursor label to avoid clutter; remote labels are shown by remote cursor elements.
 }
 
 function hideCursorLabel() {
@@ -174,13 +173,10 @@ socket.on('participants', updateParticipants);
 socket.on('cursors', updateRemoteCursors);
 
 canvas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'touch' && !e.isPrimary) return;
+
   const pos = getCanvasPoint(e);
   if (e.pointerType === 'touch') {
-    touchCount += 1;
-    if (touchCount > 1) {
-      drawing = false;
-      return;
-    }
     e.preventDefault();
   }
 
@@ -207,11 +203,10 @@ canvas.addEventListener('pointerdown', (e) => {
 
   drawing = true;
   lastPoint = pos;
-  setCursorLabel(e.clientX, e.clientY);
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (touchCount > 1) return;
+  if (e.pointerType === 'touch' && !e.isPrimary) return;
   const pos = getCanvasPoint(e);
 
   if (imageDragId) {
@@ -230,11 +225,10 @@ canvas.addEventListener('pointermove', (e) => {
   }
 
   socket.emit('cursor', pos);
-  setCursorLabel(e.clientX, e.clientY);
 });
 
 canvas.addEventListener('pointerup', (e) => {
-  if (e.pointerType === 'touch') touchCount = Math.max(0, touchCount - 1);
+  if (e.pointerType === 'touch' && !e.isPrimary) return;
   drawing = false;
   lastPoint = null;
   imageDragId = null;
