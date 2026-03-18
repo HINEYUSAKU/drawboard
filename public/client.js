@@ -86,15 +86,14 @@ function renderAll() {
     let img = imageCache.get(imgData.id);
     if (!img) {
       img = new Image();
-      img.src = imgData.dataURL;
       imageCache.set(imgData.id, img);
+      img.onload = () => {
+        renderAll();
+      };
+      img.src = imgData.dataURL;
     }
     if (img.complete) {
       ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
-    } else {
-      img.onload = () => {
-        ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
-      };
     }
   });
 }
