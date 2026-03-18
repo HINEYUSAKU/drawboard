@@ -5,8 +5,9 @@ const sizeInput = document.getElementById('size');
 const clearBtn = document.getElementById('clear');
 const eraserBtn = document.getElementById('eraser');
 const participantsEl = document.getElementById('participants');
-const myNameEl = document.getElementById('myName');
 const cursorLabel = document.getElementById('cursorLabel');
+const remoteCursors = document.getElementById('remoteCursors');
+const myNameEl = document.getElementById('myName');
 const socket = io();
 
 let mode = 'draw';
@@ -61,10 +62,23 @@ function applyImage(data) {
 
 function updateParticipants(list) {
   participantsEl.innerHTML = '';
-  list.forEach((name) => {
+  list.forEach((item) => {
     const li = document.createElement('li');
-    li.textContent = name;
+    li.textContent = item.name;
     participantsEl.appendChild(li);
+  });
+}
+
+function updateRemoteCursors(cursors) {
+  remoteCursors.innerHTML = '';
+  cursors.forEach((cursor) => {
+    if (cursor.id === socket.id) return;
+    const div = document.createElement('div');
+    div.className = 'remote-cursor';
+    div.style.left = `${cursor.x}px`;
+    div.style.top = `${cursor.y}px`;
+    div.textContent = cursor.name;
+    remoteCursors.appendChild(div);
   });
 }
 
@@ -107,14 +121,16 @@ socket.on('draw', drawLine);
 socket.on('image', applyImage);
 socket.on('clear', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
 socket.on('participants', updateParticipants);
+socket.on('cursors', updateRemoteCursors);
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'touch') {
     touchCount += 1;
-  }
-  if (touchCount > 1) {
-    drawing = false;
-    return;
+    if (touchCount > 1) {
+      drawing = false;
+      return;
+    }
+    e.preventDefault();
   }
   drawing = true;
   lastPoint = { x: e.offsetX, y: e.offsetY };
@@ -122,25 +138,41 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointerup', (e) => {
-  if (e.pointerType === 'touch') touchCount = Math.max(0, touchCount - 1);
+  if (e.pointerType === 'touch') {
+    touchCount = Math.max(0, touchCount - 1);
+    if (touchCount > 0) return;
+  }
   drawing = false;
   lastPoint = null;
   hideCursorLabel();
+  socket.emit('cursor', null);
 });
 
 canvas.addEventListener('pointerleave', (e) => {
-  if (e.pointerType === 'touch') touchCount = Math.max(0, touchCount - 1);
+  if (e.pointerType === 'touch') {
+    touchCount = Math.max(0, touchCount - 1);
+    if (touchCount > 0) return;
+  }
   drawing = false;
   lastPoint = null;
   hideCursorLabel();
+  socket.emit('cursor', null);
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (touchCount > 1) return;
-  if (!drawing || !lastPoint) return;
-  const point = { x: e.offsetX, y: e.offsetY };
-  emitDraw(lastPoint, point);
-  lastPoint = point;
+  if (e.pointerType === 'touch' && touchCount > 1) {
+    return;
+  }
+  if (drawing && lastPoint) {
+    if (e.pointerType === 'touch') e.preventDefault();
+    const point = { x: e.offsetX, y: e.offsetY };
+    emitDraw(lastPoint, point);
+    lastPoint = point;
+  }
+  if (e.pointerType === 'touch' && touchCount > 1) {
+    return;
+  }
+  socket.emit('cursor', { x: e.offsetX, y: e.offsetY });
   setCursorLabel(e.clientX, e.clientY);
 });
 

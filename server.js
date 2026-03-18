@@ -10,9 +10,14 @@ app.use(express.static('public'));
 
 const drawHistory = [];
 const participants = new Map();
+const cursors = new Map();
 
 function broadcastParticipants() {
-  io.emit('participants', Array.from(participants.values()));
+  io.emit('participants', Array.from(participants.entries()).map(([id, name]) => ({ id, name })));
+}
+
+function broadcastCursors() {
+  io.emit('cursors', Array.from(cursors.values()));
 }
 
 io.on('connection', (socket) => {
@@ -21,8 +26,13 @@ io.on('connection', (socket) => {
   socket.on('join', (name) => {
     const safeName = typeof name === 'string' && name.trim().length > 0 ? name.trim() : '名無し';
     participants.set(socket.id, safeName);
-    socket.emit('init', { history: drawHistory, participants: Array.from(participants.values()) });
+    socket.emit('init', {
+      history: drawHistory,
+      participants: Array.from(participants.entries()).map(([id, name]) => ({ id, name })),
+      cursors: Array.from(cursors.values()),
+    });
     broadcastParticipants();
+    broadcastCursors();
   });
 
   socket.on('draw', (data) => {
@@ -35,6 +45,16 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('image', data);
   });
 
+  socket.on('cursor', (data) => {
+    const name = participants.get(socket.id) || '名無し';
+    if (data && typeof data?.x === 'number' && typeof data?.y === 'number') {
+      cursors.set(socket.id, { id: socket.id, name, x: data.x, y: data.y });
+    } else {
+      cursors.delete(socket.id);
+    }
+    socket.broadcast.emit('cursors', Array.from(cursors.values()));
+  });
+
   socket.on('clear', () => {
     drawHistory.length = 0;
     io.emit('clear');
@@ -42,7 +62,9 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     participants.delete(socket.id);
+    cursors.delete(socket.id);
     broadcastParticipants();
+    broadcastCursors();
     console.log('client disconnected', socket.id);
   });
 });
