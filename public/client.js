@@ -22,6 +22,8 @@ let pendingImage = null;
 let userName = sessionStorage.getItem('myName') || '';
 const drawHistory = [];
 const imageMap = new Map();
+const imageCache = new Map(); // Cache for loaded Image objects
+
 
 if (!userName) {
   userName = window.prompt('参加者名を入力してください', '名無しさん') || '名無しさん';
@@ -81,11 +83,19 @@ function renderAll() {
     if (item.type === 'draw') drawLine(item.payload);
   });
   imageMap.forEach((imgData) => {
-    const img = new Image();
-    img.onload = () => {
+    let img = imageCache.get(imgData.id);
+    if (!img) {
+      img = new Image();
+      img.src = imgData.dataURL;
+      imageCache.set(imgData.id, img);
+    }
+    if (img.complete) {
       ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
-    };
-    img.src = imgData.dataURL;
+    } else {
+      img.onload = () => {
+        ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
+      };
+    }
   });
 }
 
@@ -171,6 +181,7 @@ socket.on('image', (payload) => {
 socket.on('clear', () => {
   drawHistory.length = 0;
   imageMap.clear();
+  imageCache.clear();
   renderAll();
 });
 

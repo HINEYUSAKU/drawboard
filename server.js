@@ -44,7 +44,7 @@ io.on('connection', (socket) => {
 
   socket.on('image', (data) => {
     images.set(data.id, data);
-    socket.broadcast.emit('image', data);
+    io.emit('image', data);
   });
 
   socket.on('cursor', (data) => {
