@@ -1,10 +1,10 @@
 const canvas = document.getElementById('canvas');
-const canvasWrap = document.querySelector('.canvas-wrap');
 const ctx = canvas.getContext('2d');
 const colorInput = document.getElementById('color');
 const sizeInput = document.getElementById('size');
 const clearBtn = document.getElementById('clear');
 const eraserBtn = document.getElementById('eraser');
+const imageModeBtn = document.getElementById('imageMode');
 const participantsEl = document.getElementById('participants');
 const cursorLabel = document.getElementById('cursorLabel');
 const remoteCursors = document.getElementById('remoteCursors');
@@ -15,7 +15,14 @@ let mode = 'draw';
 let drawing = false;
 let lastPoint = null;
 let touchCount = 0;
+let imageMode = false;
+let imageDragId = null;
+let dragOffset = { x: 0, y: 0 };
+let pendingImage = null;
 let userName = sessionStorage.getItem('myName') || '';
+const drawHistory = [];
+const imageMap = new Map();
+
 if (!userName) {
   userName = window.prompt('参加者名を入力してください', '名無しさん') || '名無しさん';
   sessionStorage.setItem('myName', userName);
@@ -24,15 +31,22 @@ myNameEl.textContent = userName;
 
 function resizeCanvas() {
   const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  const image = ctx.getImageData(0, 0, canvas.width || 1, canvas.height || 1);
+  const h = Math.max(320, Math.round(window.innerHeight * 0.55));
   canvas.width = w;
   canvas.height = h;
-  ctx.putImageData(image, 0, 0);
+  renderAll();
 }
 
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+
+function getCanvasPoint(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+  };
+}
 
 function drawLine(event) {
   const { from, to, color, size, mode } = event;
@@ -53,12 +67,18 @@ function drawLine(event) {
   ctx.restore();
 }
 
-function applyImage(data) {
-  const img = new Image();
-  img.onload = () => {
-    ctx.drawImage(img, data.x, data.y, data.w, data.h);
-  };
-  img.src = data.dataURL;
+function renderAll() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawHistory.forEach((item) => {
+    if (item.type === 'draw') drawLine(item.payload);
+  });
+  imageMap.forEach((imgData) => {
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
+    };
+    img.src = imgData.dataURL;
+  });
 }
 
 function updateParticipants(list) {
@@ -71,36 +91,23 @@ function updateParticipants(list) {
 }
 
 function updateRemoteCursors(cursors) {
+  const rect = canvas.getBoundingClientRect();
   remoteCursors.innerHTML = '';
   cursors.forEach((cursor) => {
     if (cursor.id === socket.id) return;
     const div = document.createElement('div');
     div.className = 'remote-cursor';
-    div.style.left = `${cursor.x}px`;
-    div.style.top = `${cursor.y}px`;
+    div.style.left = `${(cursor.x / canvas.width) * rect.width}px`;
+    div.style.top = `${(cursor.y / canvas.height) * rect.height}px`;
     div.textContent = cursor.name;
     remoteCursors.appendChild(div);
   });
 }
 
-function canvasToCanvasPosition(x, y) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  return {
-    x: x * scaleX,
-    y: y * scaleY,
-    pageX: rect.left + x / scaleX,
-    pageY: rect.top + y / scaleY
-  };
-}
-
 function setCursorLabel(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
-  const x = clientX - rect.left;
-  const y = clientY - rect.top;
-  cursorLabel.style.left = `${x}px`;
-  cursorLabel.style.top = `${y}px`;
+  cursorLabel.style.left = `${clientX - rect.left}px`;
+  cursorLabel.style.top = `${clientY - rect.top}px`;
   cursorLabel.style.display = 'block';
   cursorLabel.textContent = userName;
 }
@@ -109,10 +116,21 @@ function hideCursorLabel() {
   cursorLabel.style.display = 'none';
 }
 
-function emitDraw(from, to) {
+function pushDraw(from, to) {
   const payload = { from, to, color: colorInput.value, size: Number(sizeInput.value), mode };
+  drawHistory.push({ type: 'draw', payload });
   drawLine(payload);
   socket.emit('draw', payload);
+}
+
+function addOrUpdateImage(imgData, emit = true) {
+  imageMap.set(imgData.id, imgData);
+  renderAll();
+  if (emit) socket.emit('image', imgData);
+}
+
+function findImageAt(x, y) {
+  return [...imageMap.values()].reverse().find((img) => x >= img.x && x <= img.x + img.w && y >= img.y && y <= img.y + img.h);
 }
 
 socket.on('connect', () => {
@@ -120,29 +138,43 @@ socket.on('connect', () => {
 });
 
 socket.on('init', (payload) => {
-  const { history, participants, cursors } = payload;
+  const { history, participants, cursors, images } = payload;
+  drawHistory.length = 0;
+  imageMap.clear();
   if (Array.isArray(history)) {
     history.forEach((item) => {
-      if (item.type === 'draw') drawLine(item.payload);
-      if (item.type === 'image') applyImage(item.payload);
-      if (item.type === 'clear') ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (item.type === 'draw') drawHistory.push(item);
     });
   }
-  if (Array.isArray(participants)) {
-    updateParticipants(participants);
+  if (Array.isArray(images)) {
+    images.forEach((img) => imageMap.set(img.id, img));
   }
-  if (Array.isArray(cursors)) {
-    updateRemoteCursors(cursors);
-  }
+  renderAll();
+  if (Array.isArray(participants)) updateParticipants(participants);
+  if (Array.isArray(cursors)) updateRemoteCursors(cursors);
 });
 
-socket.on('draw', drawLine);
-socket.on('image', applyImage);
-socket.on('clear', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
+socket.on('draw', (payload) => {
+  drawHistory.push({ type: 'draw', payload });
+  drawLine(payload);
+});
+
+socket.on('image', (payload) => {
+  imageMap.set(payload.id, payload);
+  renderAll();
+});
+
+socket.on('clear', () => {
+  drawHistory.length = 0;
+  imageMap.clear();
+  renderAll();
+});
+
 socket.on('participants', updateParticipants);
 socket.on('cursors', updateRemoteCursors);
 
 canvas.addEventListener('pointerdown', (e) => {
+  const pos = getCanvasPoint(e);
   if (e.pointerType === 'touch') {
     touchCount += 1;
     if (touchCount > 1) {
@@ -151,48 +183,71 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     e.preventDefault();
   }
+
+  if (imageMode && pendingImage) {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const w = canvas.width * 0.6;
+    const h = (pendingImage.height / pendingImage.width) * w;
+    addOrUpdateImage({ id, dataURL: pendingImage.dataURL, x: pos.x - w / 2, y: pos.y - h / 2, w, h });
+    pendingImage = null;
+    imageMode = false;
+    imageModeBtn.classList.remove('active');
+    imageModeBtn.textContent = '画像移動';
+    return;
+  }
+
+  if (imageMode) {
+    const img = findImageAt(pos.x, pos.y);
+    if (img) {
+      imageDragId = img.id;
+      dragOffset = { x: pos.x - img.x, y: pos.y - img.y };
+      return;
+    }
+  }
+
   drawing = true;
-  lastPoint = { x: e.offsetX, y: e.offsetY };
+  lastPoint = pos;
+  setCursorLabel(e.clientX, e.clientY);
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (touchCount > 1) return;
+  const pos = getCanvasPoint(e);
+
+  if (imageDragId) {
+    const img = imageMap.get(imageDragId);
+    if (img) {
+      img.x = pos.x - dragOffset.x;
+      img.y = pos.y - dragOffset.y;
+      addOrUpdateImage(img);
+    }
+    return;
+  }
+
+  if (drawing && lastPoint) {
+    pushDraw(lastPoint, pos);
+    lastPoint = pos;
+  }
+
+  socket.emit('cursor', pos);
   setCursorLabel(e.clientX, e.clientY);
 });
 
 canvas.addEventListener('pointerup', (e) => {
-  if (e.pointerType === 'touch') {
-    touchCount = Math.max(0, touchCount - 1);
-    if (touchCount > 0) return;
-  }
+  if (e.pointerType === 'touch') touchCount = Math.max(0, touchCount - 1);
   drawing = false;
   lastPoint = null;
+  imageDragId = null;
   hideCursorLabel();
   socket.emit('cursor', null);
 });
 
-canvas.addEventListener('pointerleave', (e) => {
-  if (e.pointerType === 'touch') {
-    touchCount = Math.max(0, touchCount - 1);
-    if (touchCount > 0) return;
-  }
+canvas.addEventListener('pointerleave', () => {
   drawing = false;
   lastPoint = null;
+  imageDragId = null;
   hideCursorLabel();
   socket.emit('cursor', null);
-});
-
-canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerType === 'touch' && touchCount > 1) {
-    return;
-  }
-  if (drawing && lastPoint) {
-    if (e.pointerType === 'touch') e.preventDefault();
-    const point = { x: e.offsetX, y: e.offsetY };
-    emitDraw(lastPoint, point);
-    lastPoint = point;
-  }
-  if (e.pointerType === 'touch' && touchCount > 1) {
-    return;
-  }
-  socket.emit('cursor', { x: e.offsetX, y: e.offsetY });
-  setCursorLabel(e.clientX, e.clientY);
 });
 
 eraserBtn.addEventListener('click', () => {
@@ -201,31 +256,39 @@ eraserBtn.addEventListener('click', () => {
   eraserBtn.textContent = mode === 'erase' ? 'ペン' : '消しゴム';
 });
 
+imageModeBtn.addEventListener('click', () => {
+  imageMode = !imageMode;
+  imageModeBtn.classList.toggle('active', imageMode);
+  imageModeBtn.textContent = imageMode ? '画像配置中...' : '画像移動';
+});
+
 clearBtn.addEventListener('click', () => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawHistory.length = 0;
+  imageMap.clear();
+  renderAll();
   socket.emit('clear');
 });
 
-window.addEventListener('paste', async (e) => {
+window.addEventListener('paste', (e) => {
   const items = e.clipboardData?.items;
   if (!items) return;
-
   for (const item of items) {
     if (item.kind === 'file' && item.type.startsWith('image/')) {
       const blob = item.getAsFile();
       if (!blob) continue;
-      const dataURL = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => resolve(ev.target.result);
-        reader.readAsDataURL(blob);
-      });
-      const w = canvas.width * 0.7;
-      const h = canvas.height * 0.7;
-      const x = (canvas.width - w) / 2;
-      const y = (canvas.height - h) / 2;
-      const payload = { dataURL, x, y, w, h };
-      applyImage(payload);
-      socket.emit('image', payload);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataURL = reader.result;
+        const img = new Image();
+        img.onload = () => {
+          pendingImage = { dataURL, width: img.width, height: img.height };
+          imageMode = true;
+          imageModeBtn.classList.add('active');
+          imageModeBtn.textContent = '画像配置中...';
+        };
+        img.src = dataURL;
+      };
+      reader.readAsDataURL(blob);
       break;
     }
   }

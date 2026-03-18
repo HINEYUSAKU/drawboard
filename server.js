@@ -9,6 +9,7 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 const drawHistory = [];
+const images = new Map();
 const participants = new Map();
 const cursors = new Map();
 
@@ -28,6 +29,7 @@ io.on('connection', (socket) => {
     participants.set(socket.id, safeName);
     socket.emit('init', {
       history: drawHistory,
+      images: Array.from(images.values()),
       participants: Array.from(participants.entries()).map(([id, name]) => ({ id, name })),
       cursors: Array.from(cursors.values()),
     });
@@ -41,13 +43,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('image', (data) => {
-    drawHistory.push({ type: 'image', payload: data });
+    images.set(data.id, data);
     socket.broadcast.emit('image', data);
   });
 
   socket.on('cursor', (data) => {
     const name = participants.get(socket.id) || '名無し';
-    if (data && typeof data?.x === 'number' && typeof data?.y === 'number') {
+    if (data && typeof data.x === 'number' && typeof data.y === 'number') {
       cursors.set(socket.id, { id: socket.id, name, x: data.x, y: data.y });
     } else {
       cursors.delete(socket.id);
@@ -57,6 +59,7 @@ io.on('connection', (socket) => {
 
   socket.on('clear', () => {
     drawHistory.length = 0;
+    images.clear();
     io.emit('clear');
   });
 
