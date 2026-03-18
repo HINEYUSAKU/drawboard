@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: minna-oekaki
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+        fromDatabase: false
